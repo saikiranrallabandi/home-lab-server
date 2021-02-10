@@ -283,3 +283,279 @@ k8snode02                  : ok=23   changed=3    unreachable=0    failed=0    s
 ```
 
 
+##### HPA K8S CLUSTER
+
+jupyter
+ssh homeserver@192.168.0.24 -L 8888:127.0.0.1:8888
+jupyter notebook --ip 192.168.0.24 --port 8888
+
+
+---
+
+IPTABLES ACL 
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+```
+iptables -t nat -A PREROUTING -p tcp --dport 9867 -j DNAT --to 192.168.122.200:22
+```
+sudo iptables -I FORWARD -o virbr0 -d 192.168.122.200 -j ACCEPT
+sudo iptables -t nat -I PREROUTING -p tcp --dport 9000 -j DNAT --to 192.168.122.200:22
+sudo iptables -I FORWARD -o virbr0  -d  192.168.122.200 -j ACCEPT
+sudo iptables -t nat -A POSTROUTING -s 192.168.122.0/24 -j MASQUERADE
+sudo iptables -A FORWARD -o virbr0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+sudo iptables -A FORWARD -i virbr0 -o em1 -j ACCEPT
+sudo iptables -A FORWARD -i virbr0 -o lo -j ACCEPT
+sudo systemctl enable iptables
+sudo service iptables save
+
+---
+How to Clear RAM Memory Cache, Buffer and Swap Space on Linux
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+https://www.tecmint.com/clear-ram-memory-cache-buffer-and-swap-space-on-linux/
+
+
+
+
+---
+How to Setup Kubernetes(k8s) Cluster in HA with Kubeadm
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Minimum requirements for setting up Highly K8s cluster
+
+- Install Kubeadm, kubelet and kubectl on all master and worker Nodes
+- Network Connectivity among master and worker nodes
+- Internet Connectivity on all the nodes
+- Root credentials or sudo privileges user on all nodes
+Let’s jump into the installation and configuration steps
+
+Step 1) Set Hostname and add entries in /etc/hosts file
+
+
+
+Step 2) Install and Configure Keepalive and HAProxy on all master / control plane nodes
+
+
+```
+$ sudo yum install haproxy keepalived -y
+```
+
+Configure Keepalived on k8s-master-1 first, create check_apiserver.sh script will the following content,
+
+```
+[kadmin@k8s-master-1 ~]$ sudo vi /etc/keepalived/check_apiserver.sh
+#!/bin/sh
+APISERVER_VIP=192.168.1.45
+APISERVER_DEST_PORT=6443
+
+errorExit() {
+    echo "*** $*" 1>&2
+    exit 1
+}
+
+curl --silent --max-time 2 --insecure https://localhost:${APISERVER_DEST_PORT}/ -o /dev/null || errorExit "Error GET https://localhost:${APISERVER_DEST_PORT}/"
+if ip addr | grep -q ${APISERVER_VIP}; then
+    curl --silent --max-time 2 --insecure https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/ -o /dev/null || errorExit "Error GET https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/"
+fi
+```
+
+save and exit the file.
+
+Set the executable permissions
+
+
+
+```
+sudo chmod +x /etc/keepalived/check_apiserver.sh
+```
+
+Take the backup of keepalived.conf file and then truncate the file.
+
+```
+[kadmin@k8s-master-1 ~]$ sudo cp /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf-org
+[kadmin@k8s-master-1 ~]$ sudo sh -c '> /etc/keepalived/keepalived.conf'
+```
+
+Now paste the following contents to /etc/keepalived/keepalived.conf file
+
+```
+[kadmin@k8s-master-1 ~]$ sudo vi /etc/keepalived/keepalived.conf
+! /etc/keepalived/keepalived.conf
+! Configuration File for keepalived
+global_defs {
+    router_id LVS_DEVEL
+}
+vrrp_script check_apiserver {
+  script "/etc/keepalived/check_apiserver.sh"
+  interval 3
+  weight -2
+  fall 10
+  rise 2
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface enp0s3
+    virtual_router_id 151
+    priority 255
+    authentication {
+        auth_type PASS
+        auth_pass P@##D321!
+    }
+    virtual_ipaddress {
+        192.168.1.45/24
+    }
+    track_script {
+        check_apiserver
+    }
+}
+```
+
+Note: Only two parameters of this file need to be changed for master-2 & 3 nodes. State will become SLAVE for master 2 and 3, priority will be 254 and 253 respectively.
+
+Configure HAProxy on k8s-master-1 node, edit its configuration file and add the following contents:
+
+
+
+```
+[kadmin@k8s-master-1 ~]$ sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg-org
+```
+
+Remove all lines after default section and add following lines
+
+
+```
+[kadmin@k8s-master-1 ~]$ sudo vi /etc/haproxy/haproxy.cfg
+#---------------------------------------------------------------------
+# apiserver frontend which proxys to the masters
+#---------------------------------------------------------------------
+frontend apiserver
+    bind *:8443
+    mode tcp
+    option tcplog
+    default_backend apiserver
+#---------------------------------------------------------------------
+# round robin balancing for apiserver
+#---------------------------------------------------------------------
+backend apiserver
+    option httpchk GET /healthz
+    http-check expect status 200
+    mode tcp
+    option ssl-hello-chk
+    balance     roundrobin
+        server k8s-master-1 192.168.1.40:6443 check
+        server k8s-master-2 192.168.1.41:6443 check
+        server k8s-master-3 192.168.1.42:6443 check
+```
+
+Save and exit the file
+
+
+Now copy theses three files (check_apiserver.sh , keepalived.conf and haproxy.cfg) from k8s-master-1 to k8s-master-2 & 3
+
+Run the following for loop to scp these files to master 2 and 3
+
+
+```
+[kadmin@k8s-master-1 ~]$ for f in k8s-master-2 k8s-master-3; do scp /etc/keepalived/check_apiserver.sh /etc/keepalived/keepalived.conf root@$f:/etc/keepalived; scp /etc/haproxy/haproxy.cfg root@$f:/etc/haproxy; done
+```
+
+Note: Don’t forget to change two parameters in keepalived.conf file that we discuss above for k8s-master-2 & 3
+
+In case firewall is running on master nodes then add the following firewall rules on all three master nodes
+
+
+```
+sudo yum install firewalld -y
+sudo systemctl start firewalld
+sudo systemctl enable firewalld
+sudo systemctl status firewalld
+sudo firewall-cmd --add-rich-rule='rule protocol value="vrrp" accept' --permanent
+sudo firewall-cmd --permanent --add-port=8443/tcp
+sudo firewall-cmd --reload
+```
+
+Now Finally start and enable keepalived and haproxy service on all three master nodes using the following commands :
+
+```
+sudo systemctl enable keepalived --now
+sudo systemctl enable haproxy --now
+```
+
+Once these services are started successfully, verify whether VIP (virtual IP) is enabled on k8s-master-1 node because we have marked k8s-master-1 as MASTER node in keepalived configuration file.
+
+
+
+Perfect, above output confirms that VIP has been enabled on k8s-master-1.
+
+Firewall Rules for Master Nodes:
+
+In case firewall is running on master nodes, then allow the following ports in the firewall,
+
+
+
+```
+sudo firewall-cmd --permanent --add-port=6443/tcp
+sudo firewall-cmd --permanent --add-port=2379-2380/tcp
+sudo firewall-cmd --permanent --add-port=10250/tcp
+sudo firewall-cmd --permanent --add-port=10251/tcp
+sudo firewall-cmd --permanent --add-port=10252/tcp
+sudo firewall-cmd --permanent --add-port=179/tcp
+sudo firewall-cmd --permanent --add-port=4789/udp
+sudo firewall-cmd --reload
+sudo modprobe br_netfilter
+sudo sh -c "echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables"
+sudo sh -c "echo '1' > /proc/sys/net/ipv4/ip_forward"
+```
+
+Firewall Rules for Worker nodes:
+
+In case firewall is running on worker nodes, then allow the following ports in the firewall on all the worker nodes
+
+
+
+Run the following commands on all the worker nodes,
+
+```
+sudo firewall-cmd --permanent --add-port=10250/tcp
+sudo firewall-cmd --permanent --add-port=30000-32767/tcp
+sudo firewall-cmd --permanent --add-port=179/tcp
+sudo firewall-cmd --permanent --add-port=4789/udp
+sudo firewall-cmd --reload
+sudo modprobe br_netfilter
+sudo sh -c "echo '1' > /proc/sys/net/bridge/bridge-nf-call-iptables"
+sudo sh -c "echo '1' > /proc/sys/net/ipv4/ip_forward"
+
+```
+
+Pre-requiste install packages
+
+```
+ansible-playbook -i hosts k8s-prep.yml
+```
+
+Step 6) Initialize the Kubernetes Cluster from first master node
+
+
+```
+sudo kubeadm init --control-plane-endpoint "vip-k8s-master:8443" --upload-certs
+```
+
+In above command, –control-plane-endpoint set dns name and port for load balancer (kube-apiserver), in my case dns name is “vip-k8s-master” and port is “8443”, apart from this ‘–upload-certs’ option will share the certificates among master nodes automatically,
+
+Output of k
+
+ubeadm command would be something like below:
+
+```
+[kadmin@k8s-master-2 ~]$ sudo kubeadm join vip-k8s-master:8443 --token tun848.2hlz8uo37jgy5zqt  --discovery-token-ca-cert-hash sha256:d035f143d4bea38d54a3d827729954ab4b1d9620631ee330b8f3fbc70324abc5 --control-plane --certificate-key a0b31bb346e8d819558f8204d940782e497892ec9d3d74f08d1c0376dc3d3ef4
+```
+
+```
+kubeadm join k8smaster1.saikiranrallanandi.com:6443 --token utmpm4.xhd6vbd9wx3nrl7l \
+    --discovery-token-ca-cert-hash sha256:a98f59f62e25786bac0cba11b2a1c61777bab72669313853e64eadbae6466a02 \
+    --control-plane --certificate-key 0376850a02dc671549dcaba41623fbe8ab90db5d40dfd80b2acb4fa840324086
+```
