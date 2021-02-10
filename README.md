@@ -119,7 +119,7 @@ EXAMPLE
 
 ### Setting Custom Defaults
 
-Copy the `.kivrc` file to your $HOME directory to set custom defaults.  This is
+Copy the `.kivrc` file to your $HOME directory to set custom defaults. This is
 convenient if you find yourself repeatedly setting the same options on the
 command line, like the distribution or the number of vCPUs.
 
@@ -282,22 +282,20 @@ k8snode01                  : ok=23   changed=3    unreachable=0    failed=0    s
 k8snode02                  : ok=23   changed=3    unreachable=0    failed=0    skipped=11   rescued=0    ignored=0
 ```
 
-
 ##### HPA K8S CLUSTER
 
 jupyter
 ssh homeserver@192.168.0.24 -L 8888:127.0.0.1:8888
 jupyter notebook --ip 192.168.0.24 --port 8888
 
-
 ---
 
-IPTABLES ACL 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## IPTABLES ACL
 
 ```
 iptables -t nat -A PREROUTING -p tcp --dport 9867 -j DNAT --to 192.168.122.200:22
 ```
+
 sudo iptables -I FORWARD -o virbr0 -d 192.168.122.200 -j ACCEPT
 sudo iptables -t nat -I PREROUTING -p tcp --dport 9000 -j DNAT --to 192.168.122.200:22
 sudo iptables -I FORWARD -o virbr0  -d  192.168.122.200 -j ACCEPT
@@ -309,20 +307,18 @@ sudo systemctl enable iptables
 sudo service iptables save
 
 ---
+
 How to Clear RAM Memory Cache, Buffer and Swap Space on Linux
 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
+---
 
 https://www.tecmint.com/clear-ram-memory-cache-buffer-and-swap-space-on-linux/
 
-
-
-
 ---
+
 How to Setup Kubernetes(k8s) Cluster in HA with Kubeadm
 
------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 Minimum requirements for setting up Highly K8s cluster
 
@@ -330,14 +326,11 @@ Minimum requirements for setting up Highly K8s cluster
 - Network Connectivity among master and worker nodes
 - Internet Connectivity on all the nodes
 - Root credentials or sudo privileges user on all nodes
-Let’s jump into the installation and configuration steps
+  Let’s jump into the installation and configuration steps
 
 Step 1) Set Hostname and add entries in /etc/hosts file
 
-
-
 Step 2) Install and Configure Keepalive and HAProxy on all master / control plane nodes
-
 
 ```
 $ sudo yum install haproxy keepalived -y
@@ -365,8 +358,6 @@ fi
 save and exit the file.
 
 Set the executable permissions
-
-
 
 ```
 sudo chmod +x /etc/keepalived/check_apiserver.sh
@@ -418,14 +409,11 @@ Note: Only two parameters of this file need to be changed for master-2 & 3 node
 
 Configure HAProxy on k8s-master-1 node, edit its configuration file and add the following contents:
 
-
-
 ```
 [kadmin@k8s-master-1 ~]$ sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg-org
 ```
 
 Remove all lines after default section and add following lines
-
 
 ```
 [kadmin@k8s-master-1 ~]$ sudo vi /etc/haproxy/haproxy.cfg
@@ -453,11 +441,9 @@ backend apiserver
 
 Save and exit the file
 
-
 Now copy theses three files (check_apiserver.sh , keepalived.conf and haproxy.cfg) from k8s-master-1 to k8s-master-2 & 3
 
 Run the following for loop to scp these files to master 2 and 3
-
 
 ```
 [kadmin@k8s-master-1 ~]$ for f in k8s-master-2 k8s-master-3; do scp /etc/keepalived/check_apiserver.sh /etc/keepalived/keepalived.conf root@$f:/etc/keepalived; scp /etc/haproxy/haproxy.cfg root@$f:/etc/haproxy; done
@@ -466,7 +452,6 @@ Run the following for loop to scp these files to master 2 and 3
 Note: Don’t forget to change two parameters in keepalived.conf file that we discuss above for k8s-master-2 & 3
 
 In case firewall is running on master nodes then add the following firewall rules on all three master nodes
-
 
 ```
 sudo yum install firewalld -y
@@ -487,15 +472,11 @@ sudo systemctl enable haproxy --now
 
 Once these services are started successfully, verify whether VIP (virtual IP) is enabled on k8s-master-1 node because we have marked k8s-master-1 as MASTER node in keepalived configuration file.
 
-
-
 Perfect, above output confirms that VIP has been enabled on k8s-master-1.
 
 Firewall Rules for Master Nodes:
 
 In case firewall is running on master nodes, then allow the following ports in the firewall,
-
-
 
 ```
 sudo firewall-cmd --permanent --add-port=6443/tcp
@@ -514,8 +495,6 @@ sudo sh -c "echo '1' > /proc/sys/net/ipv4/ip_forward"
 Firewall Rules for Worker nodes:
 
 In case firewall is running on worker nodes, then allow the following ports in the firewall on all the worker nodes
-
-
 
 Run the following commands on all the worker nodes,
 
@@ -539,7 +518,6 @@ ansible-playbook -i hosts k8s-prep.yml
 
 Step 6) Initialize the Kubernetes Cluster from first master node
 
-
 ```
 sudo kubeadm init --control-plane-endpoint "vip-k8s-master:8443" --upload-certs
 ```
@@ -549,13 +527,3 @@ In above command, –control-plane-endpoint set dns name and port for load bal
 Output of k
 
 ubeadm command would be something like below:
-
-```
-[kadmin@k8s-master-2 ~]$ sudo kubeadm join vip-k8s-master:8443 --token tun848.2hlz8uo37jgy5zqt  --discovery-token-ca-cert-hash sha256:d035f143d4bea38d54a3d827729954ab4b1d9620631ee330b8f3fbc70324abc5 --control-plane --certificate-key a0b31bb346e8d819558f8204d940782e497892ec9d3d74f08d1c0376dc3d3ef4
-```
-
-```
-kubeadm join k8smaster1.saikiranrallanandi.com:6443 --token utmpm4.xhd6vbd9wx3nrl7l \
-    --discovery-token-ca-cert-hash sha256:a98f59f62e25786bac0cba11b2a1c61777bab72669313853e64eadbae6466a02 \
-    --control-plane --certificate-key 0376850a02dc671549dcaba41623fbe8ab90db5d40dfd80b2acb4fa840324086
-```
